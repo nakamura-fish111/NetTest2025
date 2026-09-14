@@ -7,69 +7,99 @@ namespace JankenClient1
 {
     class C
     {
+        const int PORT = 11000;
+
         public static void Main()
         {
-            //今回送るHello World!
-            string st = "じゃんけんしたい！";
-            Console.WriteLine("JankenClient1");
-            SocketClient(st);
+            Console.WriteLine("===== JankenClient1 =====");
+
+            SocketClient();
+
             Console.ReadKey();
         }
 
-
-        public static void SocketClient(string st)
+        public static void SocketClient()
         {
-            //IPアドレスやポートを設定(自PC、ポート:11000）
+            // 名前入力
+            Console.Write("名前を入力してください：");
+            string playerName = Console.ReadLine();
+
+            // JankenRoomのIP
             string hostName = Dns.GetHostName();
             IPHostEntry ipHostInfo = Dns.GetHostEntry(hostName);
+
             IPAddress ipAddress = ipHostInfo.AddressList[1];
-            IPEndPoint remoteEP = new IPEndPoint(ipAddress, 11000);
 
-            //外部を指定する場合
-            // IPAddress ipAddress = IPAddress.Parse("172.25.91.135");
-            // IPEndPoint remoteEP = new IPEndPoint(ipAddress, 11000);
+            IPEndPoint remoteEP =
+                new IPEndPoint(ipAddress, PORT);
 
-            //ソケットを作成
-            Socket socket = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+            // ソケット作成
+            Socket socket = new Socket(
+                ipAddress.AddressFamily,
+                SocketType.Stream,
+                ProtocolType.Tcp);
 
-            //接続する。失敗するとエラーで落ちる。
+            // 接続
             try
             {
                 socket.Connect(remoteEP);
             }
             catch (Exception e)
             {
-                Console.WriteLine($"Connect Faild{e.ToString()}");
+                Console.WriteLine("JankenRoomへの接続に失敗しました。");
+                Console.WriteLine(e.Message);
                 return;
             }
-            //Sendで送信している。
-            byte[] msg = Encoding.UTF8.GetBytes(st + "<EOF>");
-            socket.Send(msg);
 
-            //Receiveで受信している。
-            byte[] bytes = new byte[1024];
-            int bytesRec = socket.Receive(bytes);
-            string data1 = Encoding.UTF8.GetString(bytes, 0, bytesRec);
-            Console.WriteLine(data1);
+            Console.WriteLine("JankenRoomに接続しました。");
 
-            // 入力した文字列を送信する
-            string userInput = Console.ReadLine();
-            // 入力した文字列を送信
-            msg = Encoding.UTF8.GetBytes(userInput + "<EOF>");
-            socket.Send(msg);
+            // 名前を送信
+            SendString(socket, playerName);
 
-            //Receiveで受信している。
-            bytes = new byte[1024];
-            bytesRec = socket.Receive(bytes);
-            data1 = Encoding.UTF8.GetString(bytes, 0, bytesRec);
-            Console.WriteLine(data1);
+            // ゲーム開始メッセージ受信
+            string message = ReceiveString(socket);
 
+            Console.WriteLine();
+            Console.WriteLine(message);
 
+            // 手を入力
+            Console.WriteLine();
+            Console.Write("あなたの手：");
 
-            //ソケットを終了している。
+            string hand = Console.ReadLine();
+
+            // 手を送信
+            SendString(socket, hand);
+
+            // 結果を受信
+            string result = ReceiveString(socket);
+
+            Console.WriteLine();
+            Console.WriteLine(result);
+
+            // 終了
             socket.Shutdown(SocketShutdown.Both);
             socket.Close();
         }
+
+        static void SendString(Socket socket, string data)
+        {
+            byte[] msg =
+                Encoding.UTF8.GetBytes(data + "<EOF>");
+
+            socket.Send(msg);
+        }
+
+        static string ReceiveString(Socket socket)
+        {
+            byte[] bytes = new byte[1024];
+
+            int bytesRec = socket.Receive(bytes);
+
+            return Encoding.UTF8
+                .GetString(bytes, 0, bytesRec)
+                .Replace("<EOF>", "")
+                .Trim();
+        }
     }
 }
-

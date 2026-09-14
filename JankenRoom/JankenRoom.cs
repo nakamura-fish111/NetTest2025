@@ -7,90 +7,166 @@ namespace JankenRoom
 {
     class S
     {
+        const int PORT = 11000;
+
         public static void Main()
         {
-            Console.WriteLine("JankenRoom");
+            Console.WriteLine("===== JankenRoom =====");
             SocketServer();
             Console.ReadKey();
         }
 
         public static void SocketServer()
         {
-            // IPアドレスやポートの設定
-            byte[] bytes = new byte[1024];
+            // IPアドレス設定
             string hostName = Dns.GetHostName();
             IPHostEntry ipHostInfo = Dns.GetHostEntry(hostName);
+
             IPAddress ipAddress = ipHostInfo.AddressList[1];
-            IPEndPoint localEndPoint = new IPEndPoint(ipAddress, 11000);
+            IPEndPoint localEndPoint = new IPEndPoint(ipAddress, PORT);
 
-            // ソケットの作成
-            Socket listener = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+            // サーバーソケット作成
+            Socket listener = new Socket(
+                ipAddress.AddressFamily,
+                SocketType.Stream,
+                ProtocolType.Tcp);
+
             listener.Bind(localEndPoint);
-            listener.Listen(10);
+            listener.Listen(2);
 
+            Console.WriteLine($"IP : {ipAddress}");
+            Console.WriteLine($"Port : {PORT}");
+            Console.WriteLine();
+            Console.WriteLine("プレイヤー1の接続を待っています...");
+
+            // ホスト接続
+            Socket host = listener.Accept();
+            Console.WriteLine("ホストが接続しました。");
+
+            // クライアント接続
             Console.WriteLine("クライアントの接続を待っています...");
+            Socket client = listener.Accept();
+            Console.WriteLine("クライアントが接続しました。");
 
-            // クライアント2つの接続を待つ
-            Socket client1 = listener.Accept();
-            Console.WriteLine("クライアント1が接続しました。");
-            int bytesRec1 = client1.Receive(bytes);
-            Console.WriteLine($"{Encoding.UTF8.GetString(bytes, 0, bytesRec1)}");
-            Socket client2 = listener.Accept();
-            Console.WriteLine("クライアント2が接続しました。");
-            int bytesRec2 = client2.Receive(bytes);
-            Console.WriteLine($"{Encoding.UTF8.GetString(bytes, 0, bytesRec2)}");
+            // 名前を受信
+            string hostNameData = ReceiveString(host);
+            string clientNameData = ReceiveString(client);
 
-            // クライアントにじゃんけんのメッセージを送信
-            string sendData = "じゃんけんゲーム！\r\n0:ぐう　1:ちょき　2:ぱあ\r\n";
-            byte[] msg = Encoding.UTF8.GetBytes(sendData);
-            client1.Send(msg);
-            client2.Send(msg);
+            Console.WriteLine();
+            Console.WriteLine($"ホスト名    : {hostNameData}");
+            Console.WriteLine($"クライアント名 : {clientNameData}");
 
-            // クライアント1の手を受信
-            bytesRec1 = client1.Receive(bytes);
-            string client1HandStr = Encoding.UTF8.GetString(bytes, 0, bytesRec1);
-            Console.WriteLine($"クライアント1の手: {client1HandStr}");
+            // じゃんけん開始通知
+            SendString(host, "じゃんけんゲーム開始！\r\n0:ぐー　1:ちょき　2:ぱー");
+            SendString(client, "じゃんけんゲーム開始！\r\n0:ぐー　1:ちょき　2:ぱー");
 
-            // クライアント2の手を受信
-            bytesRec2 = client2.Receive(bytes);
-            string client2HandStr = Encoding.UTF8.GetString(bytes, 0, bytesRec2);
-            Console.WriteLine($"クライアント2の手: {client2HandStr}");
+            // 手を受信
+            string hostHandData = ReceiveString(host);
+            string clientHandData = ReceiveString(client);
 
-            // 勝敗の判定
-            string result1, result2;
-            if (int.TryParse(client1HandStr.Substring(0, 1), out int client1Hand) &&
-                int.TryParse(client2HandStr.Substring(0, 1), out int client2Hand))
+            Console.WriteLine();
+            Console.WriteLine($"ホストの手    : {hostHandData}");
+            Console.WriteLine($"クライアントの手 : {clientHandData}");
+
+            // 手を数字に変換
+            bool hostValid = int.TryParse(hostHandData, out int hostHand);
+            bool clientValid = int.TryParse(clientHandData, out int clientHand);
+
+            string resultHost;
+            string resultClient;
+
+            // 勝敗判定
+            if (!hostValid || !clientValid ||
+                hostHand < 0 || hostHand > 2 ||
+                clientHand < 0 || clientHand > 2)
             {
-                if (client1Hand == client2Hand)
-                {
-                    result1 = result2 = "あいこ";
-                }
-                else if ((client1Hand + 1) % 3 == client2Hand)
-                {
-                    result1 = "クライアント1の勝ち";
-                    result2 = "クライアント2の負け";
-                }
-                else
-                {
-                    result1 = "クライアント1の負け";
-                    result2 = "クライアント2の勝ち";
-                }
+                resultHost = "無効な手が入力されました。";
+                resultClient = "無効な手が入力されました。";
+            }
+            else if (hostHand == clientHand)
+            {
+                resultHost = "あいこ";
+                resultClient = "あいこ";
+            }
+            else if ((hostHand + 1) % 3 == clientHand)
+            {
+                resultHost = hostNameData + "人生の勝者！";
+                resultClient = clientNameData + "負け犬";
             }
             else
             {
-                result1 = result2 = "無効な手が入力されました。";
+                resultHost = hostNameData + "人生の勝者！";
+                resultClient = clientNameData + "負け犬";
             }
 
-            // 結果をクライアントに送信
-            client1.Send(Encoding.UTF8.GetBytes($"結果: {result1}\r\n"));
-            client2.Send(Encoding.UTF8.GetBytes($"結果: {result2}\r\n"));
+            // 手の名前
+            string hostHandName = GetHandName(hostHand);
+            string clientHandName = GetHandName(clientHand);
 
-            // ソケットの終了
-            client1.Shutdown(SocketShutdown.Both);
-            client1.Close();
-            client2.Shutdown(SocketShutdown.Both);
-            client2.Close();
+            // ホストに結果を送信
+            string hostResult =
+                "===== 結果 =====\r\n" +
+                $"{hostNameData} : {hostHandName}\r\n" +
+                $"{clientNameData} : {clientHandName}\r\n" +
+                "\r\n" +
+                resultHost;
+
+            // クライアントに結果を送信
+            string clientResult =
+                "===== 結果 =====\r\n" +
+                $"{hostNameData} : {hostHandName}\r\n" +
+                $"{clientNameData} : {clientHandName}\r\n" +
+                "\r\n" +
+                resultClient;
+
+            SendString(host, hostResult);
+            SendString(client, clientResult);
+
+            Console.WriteLine();
+            Console.WriteLine("結果を両プレイヤーに送信しました。");
+
+            // 終了
+            host.Shutdown(SocketShutdown.Both);
+            host.Close();
+
+            client.Shutdown(SocketShutdown.Both);
+            client.Close();
+
             listener.Close();
+
+            Console.WriteLine("JankenRoomを終了しました。");
+        }
+
+        // データ受信
+        static string ReceiveString(Socket socket)
+        {
+            byte[] bytes = new byte[1024];
+
+            int bytesRec = socket.Receive(bytes);
+
+            return Encoding.UTF8
+                .GetString(bytes, 0, bytesRec)
+                .Replace("<EOF>", "")
+                .Trim();
+        }
+
+        // データ送信
+        static void SendString(Socket socket, string data)
+        {
+            byte[] msg = Encoding.UTF8.GetBytes(data + "<EOF>");
+            socket.Send(msg);
+        }
+
+        // じゃんけんの手を文字に変換
+        static string GetHandName(int hand)
+        {
+            return hand switch
+            {
+                0 => "ぐー",
+                1 => "ちょき",
+                2 => "ぱー",
+                _ => "不明"
+            };
         }
     }
 }
